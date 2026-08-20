@@ -1,0 +1,17 @@
+# Keep Flutter web Docker builds small and fast
+.dart_tool/
+.build/
+build/
+.idea/
+.vscode/
+**/*.iml
+android/.gradle/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+**/GeneratedPluginRegistrant.*
+.flutter-plugins
+.flutter-plugins-dependencies
