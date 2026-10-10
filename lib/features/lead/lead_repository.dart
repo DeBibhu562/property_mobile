@@ -55,4 +55,24 @@ class LeadRepository {
       data: {'status': status},
     );
   }
+
+  Future<List<BuyerLead>> buyerLeads({int limit = 20, int offset = 0}) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/leads/buyer',
+        queryParameters: {'limit': limit, 'offset': offset},
+      );
+      final root = res.data ?? {};
+      final data = root['data'] is Map<String, dynamic>
+          ? root['data'] as Map<String, dynamic>
+          : root;
+      final rawItems = data['items'] as List<dynamic>? ?? [];
+      return rawItems
+          .whereType<Map>()
+          .map((m) => BuyerLead.fromJson(m.cast<String, dynamic>()))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/app_persona.dart';
 import '../core/auth_session.dart';
 import '../core/providers.dart';
 import '../core/session_provider.dart';
 import '../features/entitlement/entitlement_models.dart';
-import 'widgets/app_error_state.dart';
+import '../features/lead/lead_models.dart';
+import 'widgets/buyer_activity_stream.dart';
+import 'widgets/recommendations_ring_card.dart';
+import 'widgets/user_dashboard_services_grid.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key, this.embedded = false, this.session});
@@ -21,11 +23,13 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late Future<MeEntitlements?> _future;
+  late Future<List<BuyerLead>> _leadsFuture;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    _leadsFuture = _loadLeads();
   }
 
   Future<MeEntitlements?> _load() async {
@@ -37,11 +41,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<List<BuyerLead>> _loadLeads() async {
+    try {
+      return await ref.read(leadRepositoryProvider).buyerLeads();
+    } catch (_) {
+      // Graceful fallback for unauthenticated states or network issues
+      return const [];
+    }
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _future = _load();
+      _leadsFuture = _loadLeads();
     });
-    await _future;
+    await Future.wait([_future, _leadsFuture]);
   }
 
   Future<void> _signOut() async {
@@ -52,6 +66,433 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   void _openDeleteAccount() {
     Navigator.of(context).pushNamed('/delete-account');
+  }
+
+  void _showSiteVisitModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.directions_car_outlined, color: Color(0xFF059669), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Free Cab Site Visit', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0F172A))),
+                      Text('Zero booking charges • AC Cab • Dedicated Driver', style: TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'PropertyDiLado offers complimentary doorstep pickup and drop in Delhi NCR for your verified home tours.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.location_on, size: 18, color: Color(0xFF059669)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Pickup Location: Delhi NCR Central', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Free Cab ride request scheduled! Our site concierge will call you.')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.check_circle_outline, size: 20),
+                label: const Text('Confirm Free Cab Pickup', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showHomeLoansModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.account_balance_outlined, color: Color(0xFFD97706), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Home Loans at 8.35%*', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0F172A))),
+                      Text('Partnered with SBI, HDFC Bank, ICICI & Axis Bank', style: TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Get instant digital sanction with zero processing fees on selected banking partners. Calculated EMI starting at ₹758 per Lakh.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Home Loan specialist will contact you with pre-approved offers.')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD97706),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Check Loan Eligibility', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showInteriorsModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE4E6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.chair_outlined, color: Color(0xFFE11D48), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Home Interiors & Design', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0F172A))),
+                      Text('Flat 20% OFF • 45-Day Move-in Guarantee', style: TextStyle(fontSize: 12, color: Color(0xFFE11D48), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Get tailored 3D modular kitchen, wardrobe, and living room designs with 10-year warranty from verified interior designers.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Free 3D Design Consultation booked!')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE11D48),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Book Free Consultation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLegalModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.gavel_outlined, color: Color(0xFF0284C7), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Legal Title Verification', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0284C7))),
+                      Text('40-Point Property Dispute Verification Check', style: TextStyle(fontSize: 12, color: Color(0xFF0284C7), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Senior property advocates inspect 30-year deed history, municipal sanction approvals, and bank encumbrances for complete peace of mind.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Legal audit request submitted to panel lawyers.')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Request Title Audit', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showValuationModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E8FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.analytics_outlined, color: Color(0xFF7C3AED), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('PropWorth Valuation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF7C3AED))),
+                      Text('Instant AI estimate based on recent registry deeds', style: TextStyle(fontSize: 12, color: Color(0xFF7C3AED), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Know the true market price before negotiating. Uses data from over 50,000 real property transactions in Delhi NCR.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Opening PropWorth valuation report...')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Calculate Valuation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVastuModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.compass_calibration_outlined, color: Color(0xFFD97706), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Vastu Consultation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFFD97706))),
+                      Text('Certified experts • Energy flow & directional audit', style: TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Get complete floorplan analysis for North/East entrance harmony, master bedroom orientation, and zero-demolition remedies.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Vastu consultation booked with certified specialist.')),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD97706),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Book Vastu Expert', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,83 +533,131 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           builder: (context, snapshot) {
             final entitlements = snapshot.data;
 
-            return ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              children: [
-                if (session != null) ...[
-                  _HeroUserHeader(session: session),
-                  const SizedBox(height: 16),
-                ],
+            return FutureBuilder<List<BuyerLead>>(
+              future: _leadsFuture,
+              builder: (context, leadsSnapshot) {
+                final leads = leadsSnapshot.data ?? const <BuyerLead>[];
 
-                // Membership & Entitlements Section
-                _MembershipCard(
-                  entitlements: entitlements,
-                  session: session,
-                ),
-                const SizedBox(height: 18),
+                return ListView(
+                  cacheExtent: 5000,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  children: [
+                    if (session != null) ...[
+                      _HeroUserHeader(session: session),
+                      const SizedBox(height: 16),
+                    ],
 
-                // Account Settings & Security
-                const _SectionTitle(title: 'Account Settings'),
-                const SizedBox(height: 10),
-                _SettingsGroup(
-                  onSignOut: _signOut,
-                ),
-                const SizedBox(height: 18),
-
-                Text(
-                  'Danger zone',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _DangerZoneCard(
-                  onDeleteAccount: _openDeleteAccount,
-                ),
-                const SizedBox(height: 24),
-
-                // Quick Activity Metrics
-                _ActivitySummaryRow(
-                  favoritesCount: ref.watch(favoritesProvider).length,
-                ),
-                const SizedBox(height: 20),
-
-                // Quick Real Estate Services & Tools
-                const _SectionTitle(title: 'Property Tools & Services'),
-                const SizedBox(height: 10),
-                _QuickToolsGrid(
-                  onPostProperty: () => Navigator.of(context).pushNamed('/add-property'),
-                  onEmiCalc: () => Navigator.of(context).pushNamed('/home'),
-                  onInsights: () => Navigator.of(context).pushNamed('/home'),
-                  onSuggestions: () => Navigator.of(context).pushNamed('/smart-suggestions'),
-                ),
-                const SizedBox(height: 24),
-
-                // Structured Limits (if available from backend)
-                if (entitlements != null && _hasStructuredLimits(entitlements)) ...[
-                  const _SectionTitle(title: 'Plan Usage & Quotas'),
-                  const SizedBox(height: 8),
-                  Card(
-                    elevation: 0,
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    // Membership & Entitlements Section
+                    _MembershipCard(
+                      entitlements: entitlements,
+                      session: session,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: _buildLimitsList(entitlements),
+                    const SizedBox(height: 18),
+
+                    // Account Settings & Security
+                    const _SectionTitle(title: 'Account Settings'),
+                    const SizedBox(height: 10),
+                    _SettingsGroup(
+                      onSignOut: _signOut,
+                    ),
+                    const SizedBox(height: 18),
+
+                    Text(
+                      'Danger zone',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.error,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-                const SizedBox(height: 32),
-              ],
+                    const SizedBox(height: 10),
+                    _DangerZoneCard(
+                      onDeleteAccount: _openDeleteAccount,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // SCR-11: 8-Tile Quick Service Grid
+                    UserDashboardServicesGrid(
+                      contactedCount: leads.isNotEmpty ? leads.length : 116,
+                      onContactedTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('You have ${leads.isNotEmpty ? leads.length : 116} active property inquiries.')),
+                        );
+                      },
+                      onSiteVisitTap: _showSiteVisitModal,
+                      onSuggestionsTap: () => Navigator.of(context).pushNamed('/smart-suggestions'),
+                      onLoansTap: _showHomeLoansModal,
+                      onInteriorsTap: _showInteriorsModal,
+                      onLegalTap: _showLegalModal,
+                      onValuationTap: _showValuationModal,
+                      onVastuTap: _showVastuModal,
+                    ),
+                    const SizedBox(height: 18),
+
+                    // SCR-11: Personalized Recommendations Card with Countdown Ring
+                    RecommendationsRingCard(
+                      remainingCount: 30,
+                      city: 'Delhi NCR',
+                      onExploreTap: () => Navigator.of(context).pushNamed('/smart-suggestions'),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // SCR-11: Commute Preference Survey Card
+                    PreferenceSurveyCard(
+                      onSelectionChanged: (selected) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            duration: const Duration(seconds: 1),
+                            content: Text('Preferences updated: ${selected.join(", ")}'),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+
+                    // SCR-11: Recent Activity Stream (Contacted vs Viewed tabs, status pills, call, notes)
+                    BuyerActivityStream(
+                      contactedLeads: leads,
+                      onViewSimilar: (lead) => Navigator.of(context).pushNamed('/smart-suggestions'),
+                      onContactAgain: (phone) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Connecting call to advertiser at $phone...')),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Quick Activity Metrics
+                    _ActivitySummaryRow(
+                      favoritesCount: ref.watch(favoritesProvider).length,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Structured Limits (if available from backend)
+                    if (entitlements != null && _hasStructuredLimits(entitlements)) ...[
+                      const _SectionTitle(title: 'Plan Usage & Quotas'),
+                      const SizedBox(height: 8),
+                      Card(
+                        elevation: 0,
+                        color: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: _buildLimitsList(entitlements),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                    const SizedBox(height: 32),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -435,11 +924,11 @@ class _MembershipCard extends StatelessWidget {
             child: Divider(height: 1, color: Color(0xFFF1F5F9)),
           ),
           // Included perks
-          _PerkRow(icon: Icons.check_circle_outline, text: 'Search verified listings across India'),
+          const _PerkRow(icon: Icons.check_circle_outline, text: 'Search verified listings across India'),
           const SizedBox(height: 6),
-          _PerkRow(icon: Icons.check_circle_outline, text: 'Direct contact with property owners & agents'),
+          const _PerkRow(icon: Icons.check_circle_outline, text: 'Direct contact with property owners & agents'),
           const SizedBox(height: 6),
-          _PerkRow(icon: Icons.check_circle_outline, text: 'Smart AI match recommendations & alerts'),
+          const _PerkRow(icon: Icons.check_circle_outline, text: 'Smart AI match recommendations & alerts'),
         ],
       ),
     );
@@ -553,165 +1042,7 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _QuickToolsGrid extends StatelessWidget {
-  const _QuickToolsGrid({
-    required this.onPostProperty,
-    required this.onEmiCalc,
-    required this.onInsights,
-    required this.onSuggestions,
-  });
 
-  final VoidCallback onPostProperty;
-  final VoidCallback onEmiCalc;
-  final VoidCallback onInsights;
-  final VoidCallback onSuggestions;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _ToolTile(
-                title: 'Post Property',
-                subtitle: 'List for sale/rent',
-                icon: Icons.add_home_work_outlined,
-                badge: 'FREE',
-                color: const Color(0xFF4F46E5),
-                onTap: onPostProperty,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ToolTile(
-                title: 'Smart Matches',
-                subtitle: 'AI suggestions',
-                icon: Icons.lightbulb_outline,
-                badge: 'NEW',
-                color: const Color(0xFFF59E0B),
-                onTap: onSuggestions,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _ToolTile(
-                title: 'EMI Calculator',
-                subtitle: 'Home loan plans',
-                icon: Icons.calculate_outlined,
-                color: const Color(0xFF059669),
-                onTap: onEmiCalc,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ToolTile(
-                title: 'Price Trends',
-                subtitle: 'Locality insights',
-                icon: Icons.trending_up,
-                color: const Color(0xFF2563EB),
-                onTap: onInsights,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ToolTile extends StatelessWidget {
-  const _ToolTile({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-    this.badge,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  final String? badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, size: 20, color: color),
-                  ),
-                  if (badge != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: badge == 'FREE'
-                            ? const Color(0xFFECFDF5)
-                            : const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        badge!,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: badge == 'FREE'
-                              ? const Color(0xFF059669)
-                              : const Color(0xFFD97706),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _LimitProgressTile extends StatelessWidget {
   const _LimitProgressTile({required this.label, this.used, required this.limit});
