@@ -21,6 +21,7 @@ import 'features/property/property_models.dart';
 import 'ui/shell/app_shell_screen.dart';
 import 'ui/smart_suggestions_screen.dart';
 import 'ui/splash_screen.dart';
+import 'ui/top_matches_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -99,6 +100,13 @@ class PropertyDilaDoApp extends StatelessWidget {
         '/listing-visibility': (ctx) {
           final id = ModalRoute.of(ctx)?.settings.arguments;
           return ListingVisibilityScreen(listingId: id is String ? id : '');
+        },
+        '/top-matches': (ctx) {
+          return TopMatchesScreen(
+            onNavigate: (route, [arguments]) {
+              Navigator.of(ctx).pushNamed(route, arguments: arguments);
+            },
+          );
         },
       },
     );

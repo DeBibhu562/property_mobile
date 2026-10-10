@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -22,6 +23,7 @@ class BuyerSuggestionScreen extends ConsumerStatefulWidget {
 
 class _BuyerSuggestionScreenState extends ConsumerState<BuyerSuggestionScreen> {
   bool _loading = false;
+  Object? _error;
   List<Map<String, dynamic>> _projects = const [];
   List<PropertyItem> _listings = const [];
   final _inr = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
