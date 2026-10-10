@@ -4,15 +4,19 @@ String resolveImageUrl(String? url) {
   if (url == null || url.isEmpty) return '';
   if (url.startsWith('http://') || url.startsWith('https://')) {
     var resolved = url;
+    final origin = FlavorConfig.publicOrigin;
     if (resolved.contains('localhost:3000')) {
-      resolved = resolved.replaceAll('http://localhost:3000', FlavorConfig.apiBaseUrl);
+      resolved = resolved.replaceAll('http://localhost:3000', origin);
     }
     if (resolved.contains('127.0.0.1:3000')) {
-      resolved = resolved.replaceAll('http://127.0.0.1:3000', FlavorConfig.apiBaseUrl);
+      resolved = resolved.replaceAll('http://127.0.0.1:3000', origin);
+    }
+    if (resolved.contains('10.0.2.2:3000')) {
+      resolved = resolved.replaceAll('http://10.0.2.2:3000', origin);
     }
     return resolved;
   }
-  final base = FlavorConfig.apiBaseUrl;
+  final base = FlavorConfig.publicOrigin;
   if (url.startsWith('/')) {
     return '$base$url';
   }

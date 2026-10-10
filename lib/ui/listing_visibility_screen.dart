@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import '../features/listing/listing_models.dart';
+import 'widgets/app_error_state.dart';
 
 class ListingVisibilityScreen extends ConsumerStatefulWidget {
   const ListingVisibilityScreen({super.key, required this.listingId});
@@ -272,33 +273,12 @@ class _ErrorView extends StatelessWidget {
   final Object? error;
   final Future<void> Function() onRetry;
 
-  String _message() {
-    if (error is DioException) {
-      final code = (error as DioException).response?.statusCode;
-      if (code == 401) return 'Your session expired. Please sign in again.';
-      if (code == 403) return 'You don\'t have permission to view this listing\'s analytics.';
-      if (code == 404) return 'That listing was not found.';
-    }
-    return error?.toString() ?? 'Failed to load visibility.';
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const SizedBox(height: 80),
-        Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
-        const SizedBox(height: 12),
-        Text(_message(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: 16),
-        Center(
-          child: FilledButton.tonal(
-            onPressed: onRetry,
-            child: const Text('Try again'),
-          ),
-        ),
-      ],
+    return AppErrorState(
+      error: error,
+      title: 'Could Not Load Visibility',
+      onRetry: onRetry,
     );
   }
 }

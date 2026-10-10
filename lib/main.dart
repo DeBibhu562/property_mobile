@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/app_nav.dart';
+import 'core/flavor_config.dart';
 import 'core/theme.dart';
 import 'ui/add_listing_screen.dart';
 import 'ui/admin_moderation_screen.dart';
 import 'ui/auth_screen.dart';
+import 'ui/delete_account_screen.dart';
 import 'ui/leads_screen.dart';
 import 'ui/listing_visibility_screen.dart';
 import 'ui/my_listings_screen.dart';
@@ -22,6 +24,7 @@ import 'ui/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('PropertyDilaDo API_BASE_URL=${FlavorConfig.apiBaseUrl}');
   runApp(const ProviderScope(child: PropertyDilaDoApp()));
 }
 
@@ -33,7 +36,8 @@ class PropertyDilaDoApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: appNavigatorKey,
       scaffoldMessengerKey: appMessengerKey,
-      title: 'Propertely',
+      title: 'PropertyDilaDo',
+      debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const SplashScreen(),
       routes: {
@@ -53,6 +57,7 @@ class PropertyDilaDoApp extends StatelessWidget {
         },
         '/add-property': (_) => const AddListingScreen(),
         '/profile': (_) => const ProfileScreen(),
+        '/delete-account': (_) => const DeleteAccountScreen(),
         '/my-listings': (_) => const MyListingsScreen(),
         '/leads': (_) => const LeadsScreen(),
         '/admin-moderation': (_) => const AdminModerationScreen(),

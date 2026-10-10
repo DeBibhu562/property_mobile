@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import '../features/listing/listing_models.dart';
+import 'widgets/app_error_state.dart';
 
 class MyListingsScreen extends ConsumerStatefulWidget {
   const MyListingsScreen({super.key, this.embedded = false});
@@ -127,7 +128,7 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: (isActive ? Colors.green : Colors.orange).withOpacity(0.12),
+        color: (isActive ? Colors.green : Colors.orange).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -147,36 +148,12 @@ class _ErrorView extends StatelessWidget {
   final Object? error;
   final Future<void> Function() onRetry;
 
-  String _message() {
-    if (error is DioException) {
-      final code = (error as DioException).response?.statusCode;
-      if (code == 401) return 'Your session expired. Please sign in again.';
-      if (code == 403) return 'You do not have permission to view listings.';
-    }
-    return error?.toString() ?? 'Failed to load listings.';
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const SizedBox(height: 80),
-        Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
-        const SizedBox(height: 12),
-        Text(
-          _message(),
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
-        const SizedBox(height: 16),
-        Center(
-          child: FilledButton.tonal(
-            onPressed: onRetry,
-            child: const Text('Try again'),
-          ),
-        ),
-      ],
+    return AppErrorState(
+      error: error,
+      title: 'Could Not Load Listings',
+      onRetry: onRetry,
     );
   }
 }

@@ -39,7 +39,18 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android Studio and Gradle artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+android/build/
+.gradle/
+android/.gradle/
+
+# Keystores & credentials
+*.keystore
+*.jks
+key.properties
+android/key.properties
+android/keystore_backup/

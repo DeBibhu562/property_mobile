@@ -1,9 +1,10 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/api_error_formatter.dart';
 import '../core/providers.dart';
 import '../features/admin/admin_models.dart';
+import 'widgets/app_error_state.dart';
 
 class AdminModerationScreen extends ConsumerStatefulWidget {
   const AdminModerationScreen({super.key, this.embedded = false});
@@ -39,10 +40,11 @@ class _AdminModerationScreenState extends ConsumerState<AdminModerationScreen> {
         const SnackBar(content: Text('Property approved successfully')),
       );
       await _refresh();
-    } on DioException catch (e) {
+    } catch (e) {
       if (!mounted) return;
+      final parsed = ApiErrorFormatter.format(e, defaultMessage: 'Approve failed');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Approve failed')),
+        SnackBar(content: Text(parsed.message)),
       );
     }
   }
@@ -55,10 +57,11 @@ class _AdminModerationScreenState extends ConsumerState<AdminModerationScreen> {
         const SnackBar(content: Text('Property rejected')),
       );
       await _refresh();
-    } on DioException catch (e) {
+    } catch (e) {
       if (!mounted) return;
+      final parsed = ApiErrorFormatter.format(e, defaultMessage: 'Reject failed');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Reject failed')),
+        SnackBar(content: Text(parsed.message)),
       );
     }
   }
@@ -104,19 +107,11 @@ class _AdminModerationScreenState extends ConsumerState<AdminModerationScreen> {
                 return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
               }
               if (snapshot.hasError) {
-                return ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    const SizedBox(height: 80),
-                    Text('${snapshot.error}', style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: FilledButton.tonal(
-                        onPressed: _refresh,
-                        child: const Text('Retry'),
-                      ),
-                    ),
-                  ],
+                return AppErrorState(
+                  error: snapshot.error,
+                  isDark: true,
+                  title: 'Could Not Load Moderation Queue',
+                  onRetry: _refresh,
                 );
               }
 

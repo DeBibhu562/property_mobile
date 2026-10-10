@@ -1,11 +1,14 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth_session.dart';
+import '../core/api_envelope.dart';
+import '../core/city_resolver.dart';
 import '../core/providers.dart';
 import '../features/property/property_models.dart';
+import '../core/theme.dart';
 import 'smart_suggestions_screen.dart';
-import 'widgets/emi_calculator_widget.dart';
 
 class SearchPortalScreen extends ConsumerStatefulWidget {
   const SearchPortalScreen({
@@ -22,8 +25,9 @@ class SearchPortalScreen extends ConsumerStatefulWidget {
 }
 
 class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
+  CancelToken? _cancelToken;
   bool _loading = true;
-  bool _showExploreBanner = true;
+  Object? _error;
   bool _suggestionsPrompted = false;
   List<dynamic> _localities = [];
   List<dynamic> _landmarks = [];
@@ -32,10 +36,21 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
   @override
   void initState() {
     super.initState();
+    final initialCity = ref.read(searchSelectionProvider).city ?? 'New Delhi';
+    _projects = _getFallbackProjects(initialCity);
+    _localities = _getFallbackLocalities(initialCity);
+    _landmarks = _getFallbackLandmarks(initialCity);
+    _loading = false;
     Future.microtask(() async {
       await _loadPortalMeta();
       _maybeOpenSmartSuggestions();
     });
+  }
+
+  @override
+  void dispose() {
+    _cancelToken?.cancel();
+    super.dispose();
   }
 
   void _maybeOpenSmartSuggestions() {
@@ -56,92 +71,103 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
   }
 
   Future<void> _loadPortalMeta() async {
+    _cancelToken?.cancel();
+    _cancelToken = CancelToken();
+    final token = _cancelToken!;
+
     final searchState = ref.read(searchSelectionProvider);
-    final city = searchState.city ?? 'New Delhi';
+    final city = CityResolver.primary(searchState.city ?? 'New Delhi');
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       final dio = ref.read(dioProvider);
-      final res = await dio.get('/search/portal-meta', queryParameters: {'city': city});
-      // API wraps payload under res.data['data']
-      final payload = res.data is Map ? (res.data['data'] ?? res.data) : res.data;
-      if (mounted) {
-        setState(() {
-          _localities = (payload['localities'] as List<dynamic>?) ?? [];
-          _landmarks = (payload['landmarks'] as List<dynamic>?) ?? [];
-          _projects = (payload['projects'] as List<dynamic>?) ?? [];
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      // Fallback data
-      if (mounted) {
-        setState(() {
-          _localities = [
-            {'name': 'Dwarka Mor', 'rateSqft': '₹7.3K/sq.ft.'},
-            {'name': 'Chhattarpur', 'rateSqft': '₹6.6K/sq.ft.'},
-            {'name': 'Saket', 'rateSqft': '₹15.5K/sq.ft.'},
-            {'name': 'Dwarka Sector 12', 'rateSqft': '₹9.2K/sq.ft.'},
-          ];
-          _landmarks = [
-            {'name': 'Dwarka Sector- 10 Metro', 'type': 'METRO'},
-            {'name': 'Dwarka Mor Metro Station', 'type': 'METRO'},
-            {'name': 'Rithala Metro Station', 'type': 'METRO'},
-            {'name': 'Chhattarpur Metro Station', 'type': 'METRO'},
-          ];
-          _projects = [
-            {
-              'id': 'proj_1',
-              'slug': 'guru-ji-vipin-garden',
-              'name': 'Guru Ji Vipin Garden',
-              'builder': 'AM Innovation Builder',
-              'city': 'New Delhi',
-              'locality': 'Dwarka Mor',
-              'rateSqft': '₹5.99k/sq.ft.',
-              'priceLabel': '₹20.0 L – ₹45.0 L',
-              'coverImageUrl':
-                  'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1600&q=80',
-              'configs': [
-                {'bhk': 1},
-                {'bhk': 2},
-              ],
-            },
-            {
-              'id': 'proj_2',
-              'slug': 's-gambhir-the-palladium',
-              'name': 'S Gambhir The Palladium',
-              'builder': 'Bandhu Real Estate',
-              'city': 'New Delhi',
-              'locality': 'Dwarka Mor',
-              'rateSqft': '₹7.41k/sq.ft.',
-              'priceLabel': '₹50.0 L – ₹81.5 L',
-              'coverImageUrl':
-                  'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1600&q=80',
-              'configs': [
-                {'bhk': 2},
-                {'bhk': 3},
-              ],
-            },
-            {
-              'id': 'proj_3',
-              'slug': 'eldeco-camelot-dwarka',
-              'name': 'Eldeco Camelot',
-              'builder': 'Eldeco Group',
-              'city': 'New Delhi',
-              'locality': 'Dwarka Sector 17',
-              'rateSqft': '₹36.55k/sq.ft.',
-              'priceLabel': '₹3.40 Cr – ₹11.00 Cr',
-              'coverImageUrl':
-                  'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1600&q=80',
-              'configs': [
-                {'bhk': 3},
-                {'bhk': 4},
-              ],
-            },
-          ];
-          _loading = false;
-        });
-      }
+      final res = await dio
+          .get(
+            '/search/portal-meta',
+            queryParameters: {'city': city},
+            cancelToken: token,
+          )
+          .timeout(const Duration(seconds: 3));
+      final payload = tryUnwrapData(res.data);
+      if (!mounted || token.isCancelled) return;
+      final fetchedProjects = (payload?['projects'] as List<dynamic>?) ?? [];
+      final fetchedLocalities = (payload?['localities'] as List<dynamic>?) ?? [];
+      final fetchedLandmarks = (payload?['landmarks'] as List<dynamic>?) ?? [];
+
+      setState(() {
+        _localities = fetchedLocalities.isNotEmpty ? fetchedLocalities : _getFallbackLocalities(city);
+        _landmarks = fetchedLandmarks.isNotEmpty ? fetchedLandmarks : _getFallbackLandmarks(city);
+        _projects = fetchedProjects.isNotEmpty ? fetchedProjects : _getFallbackProjects(city);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || token.isCancelled) return;
+      setState(() {
+        _localities = _getFallbackLocalities(city);
+        _landmarks = _getFallbackLandmarks(city);
+        _projects = _getFallbackProjects(city);
+        _loading = false;
+      });
     }
+  }
+
+  List<dynamic> _getFallbackLocalities(String city) {
+    return [
+      {'name': 'Dwarka', 'count': '140+ properties'},
+      {'name': 'Rohini', 'count': '95+ properties'},
+      {'name': 'Saket', 'count': '60+ properties'},
+      {'name': 'Janakpuri', 'count': '45+ properties'},
+      {'name': 'Vasant Kunj', 'count': '80+ properties'},
+      {'name': 'Greater Kailash', 'count': '50+ properties'},
+    ];
+  }
+
+  List<dynamic> _getFallbackLandmarks(String city) {
+    return [
+      {'name': 'Metro Station', 'count': '210+ near transit'},
+      {'name': 'International Airport', 'count': '85+ nearby'},
+      {'name': 'City Mall', 'count': '120+ near shopping'},
+      {'name': 'IT Tech Park', 'count': '150+ near offices'},
+    ];
+  }
+
+  List<dynamic> _getFallbackProjects(String city) {
+    return [
+      {
+        'id': 'prj_dlf_arbour',
+        'slug': 'dlf-the-arbour',
+        'name': 'DLF The Arbour',
+        'locality': 'Sector 63',
+        'city': city,
+        'priceLabel': '₹ 7.5 Cr - 9.2 Cr',
+        'coverImageUrl': 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80',
+        'configs': [{'bhk': 4}],
+      },
+      {
+        'id': 'prj_godrej_woods',
+        'slug': 'godrej-woods',
+        'name': 'Godrej Woods',
+        'locality': 'Sector 43',
+        'city': city,
+        'priceLabel': '₹ 2.4 Cr - 4.8 Cr',
+        'coverImageUrl': 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
+        'configs': [{'bhk': 2}, {'bhk': 3}],
+      },
+      {
+        'id': 'prj_tata_primanti',
+        'slug': 'tata-primanti',
+        'name': 'Tata Primanti',
+        'locality': 'Southern Peripheral Road',
+        'city': city,
+        'priceLabel': '₹ 3.8 Cr - 6.5 Cr',
+        'coverImageUrl': 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80',
+        'configs': [{'bhk': 3}, {'bhk': 4}],
+      },
+    ];
   }
 
   @override
@@ -161,7 +187,6 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
     final matchedSubtitle = isRent
         ? 'Homes available for rent near you'
         : 'Projects from the best developers';
-    final recentIntentLabel = isRent ? 'Rent homes' : 'Buy homes';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -189,101 +214,46 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
           
           SafeArea(
             child: ListView(
-              padding: const EdgeInsets.only(bottom: 80), // Space for bottom banner
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
               children: [
-                // Header (Avatar, Welcome, Post Property)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: const Color(0xFF4F46E5),
-                        child: const Icon(Icons.person, color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      Row(
-                        children: const [
-                          Text('Welcome', style: TextStyle(fontSize: 14, color: Color(0xFF1E293B))),
-                          SizedBox(width: 4),
-                          Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF1E293B)),
-                        ],
-                      ),
-                      const Spacer(),
-                      // Post Property Button
-                      Material(
-                        color: const Color(0xFFE5E7EB),
-                        borderRadius: BorderRadius.circular(6),
-                        child: InkWell(
-                          onTap: () => widget.onNavigate('/add-property'),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text(
-                                  'Post Property',
-                                  style: TextStyle(fontSize: 12, color: Color(0xFF374151)),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'FREE',
-                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFDB2777)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 4),
 
-                // Tabs Row
+                // 1. Sleek Category Pills Row (~34px height)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildBoxTab(
+                      _buildCategoryPill(
                         'Buy',
                         Icons.sell_outlined,
                         category == 'buy',
                         onTap: () => _onCategoryTap('buy'),
                       ),
-                      const SizedBox(width: 12),
-                      _buildBoxTabWithBadge(
+                      const SizedBox(width: 8),
+                      _buildCategoryPill(
                         'Projects',
                         Icons.business,
-                        'NEW',
                         category == 'projects',
+                        badge: 'NEW',
                         onTap: () => _onCategoryTap('projects'),
                       ),
-                      const SizedBox(width: 12),
-                      _buildBoxTab(
+                      const SizedBox(width: 8),
+                      _buildCategoryPill(
                         'Rent',
                         Icons.vpn_key_outlined,
                         category == 'rent',
                         onTap: () => _onCategoryTap('rent'),
                       ),
-                      const SizedBox(width: 12),
-                      _buildBoxTab(
+                      const SizedBox(width: 8),
+                      _buildCategoryPill(
                         'Commercial',
                         Icons.business_center_outlined,
                         category == 'commercial',
                         onTap: () => _onCategoryTap('commercial'),
                       ),
-                      const SizedBox(width: 12),
-                      _buildBoxTab(
+                      const SizedBox(width: 8),
+                      _buildCategoryPill(
                         'PG',
                         Icons.group_outlined,
                         category == 'pg',
@@ -292,47 +262,59 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
 
-                // Search Card
+                // 2. Compact Unified Search Bar (~48px height)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Container(
+                    height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.02),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Text('Searching in ', style: const TextStyle(color: Color(0xFF475569), fontSize: 13)),
-                            InkWell(
-                              onTap: () {
-                                ref.read(searchSelectionProvider.notifier).resetCity();
-                              },
-                              child: Row(
-                                children: [
-                                  Text(city, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontSize: 13)),
-                                  const Icon(Icons.keyboard_arrow_down, size: 16, color: Color(0xFF1E293B)),
-                                ],
-                              ),
+                        // City Picker Trigger
+                        InkWell(
+                          onTap: () => ref.read(searchSelectionProvider.notifier).resetCity(),
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.location_on, size: 16, color: AppTheme.primary),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 85),
+                                  child: Text(
+                                    city,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(Icons.arrow_drop_down, size: 18, color: AppTheme.textSecondary),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        // Search Field
-                        Material(
-                          color: Colors.transparent,
+                        Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                        // Search Hint Trigger
+                        Expanded(
                           child: InkWell(
                             onTap: () {
                               if (category == 'projects') {
@@ -341,88 +323,121 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
                                 _openListingsForCategory(category == 'buy' ? 'buy' : category);
                               }
                             },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.only(left: 16, right: 6, top: 6, bottom: 6),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.shade300),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
                               child: Row(
                                 children: [
                                   Expanded(
                                     child: Text(
                                       searchHint,
-                                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Color(0xFF94A3B8),
+                                        fontSize: 12.5,
+                                      ),
                                     ),
                                   ),
                                   Container(
-                                    padding: const EdgeInsets.all(8),
+                                    padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF4F46E5),
-                                      borderRadius: BorderRadius.circular(8),
+                                      color: AppTheme.primary,
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
-                                    child: const Icon(Icons.search, color: Colors.white, size: 20),
+                                    child: const Icon(Icons.search, color: Colors.white, size: 16),
                                   ),
                                 ],
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        // Recent Searches
-                        const Text('Recent searches', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // 3. Compact Quick Search / Locality Chips (height ~26px)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: () => _openListingsForCategory(category),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade200),
-                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.history, size: 18, color: Color(0xFF64748B)),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text('Dwarka Mor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                                      const SizedBox(width: 8),
-                                      Text('40+ new', style: TextStyle(fontSize: 12, color: const Color(0xFFDB2777))),
-                                    ],
+                              const Icon(Icons.history, size: 13, color: AppTheme.textSecondary),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Dwarka Mor',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.secondary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '40+ new',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.secondary,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(recentIntentLabel, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                                ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Explore options link
-                Center(
-                  child: Text.rich(
-                    TextSpan(
-                      text: 'Not sure about locality? ',
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                      children: const [
-                        TextSpan(
-                          text: 'Explore options >',
-                          style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _openListingsForCategory(category),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Explore All Localities',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, size: 14, color: AppTheme.textSecondary),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
 
                 // Perfectly matched homes
                 Padding(
@@ -464,7 +479,7 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF4F46E5),
+                            color: AppTheme.primary,
                           ),
                         ),
                       ),
@@ -476,7 +491,19 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
                   height: 280,
                   child: _loading
                       ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                      : ListView.separated(
+                      : _error != null
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text('Could not load projects'),
+                                  TextButton(onPressed: _loadPortalMeta, child: const Text('Retry')),
+                                ],
+                              ),
+                            )
+                          : _projects.isEmpty
+                              ? const Center(child: Text('No projects for this city yet'))
+                              : ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           scrollDirection: Axis.horizontal,
                           itemCount: _projects.length,
@@ -494,72 +521,10 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
                           },
                         ),
                 ),
-                SizedBox(height: _showExploreBanner ? 88 : 40),
+                const SizedBox(height: 20),
               ],
             ),
           ),
-          
-          // Bottom Banner
-          if (_showExploreBanner)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16, // Above nav bar
-              child: Material(
-                color: Colors.white,
-                elevation: 4,
-                shadowColor: Colors.black26,
-                borderRadius: BorderRadius.circular(12),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Explore relevant projects in Dwarka Mor,\nNew Delhi',
-                          style: TextStyle(color: Color(0xFF1E293B), fontSize: 12),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: () {
-                          if (category == 'projects' || category == 'buy') {
-                            widget.onNavigate('/projects');
-                          } else {
-                            _openListingsForCategory(category);
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF4F46E5),
-                          side: const BorderSide(color: Color(0xFF4F46E5)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Explore',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        onPressed: () => setState(() => _showExploreBanner = false),
-                        icon: const Icon(Icons.cancel, color: Color(0xFF94A3B8), size: 20),
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        tooltip: 'Dismiss',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
         ],
       ),
     );
@@ -600,50 +565,72 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
     widget.onNavigate('/properties', args);
   }
 
-  Widget _buildBoxTab(String title, IconData icon, bool isSelected, {VoidCallback? onTap}) {
+  Widget _buildCategoryPill(
+    String title,
+    IconData icon,
+    bool isSelected, {
+    String? badge,
+    VoidCallback? onTap,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          constraints: const BoxConstraints(minWidth: 72),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: isSelected ? AppTheme.primary : Colors.white,
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFFE2E8F0),
-              width: isSelected ? 1.5 : 1,
+              color: isSelected ? AppTheme.primary : const Color(0xFFE2E8F0),
+              width: 1,
             ),
             boxShadow: [
               if (!isSelected)
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  offset: const Offset(0, 1),
                 ),
             ],
           ),
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 24,
-                color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF475569),
+                size: 15,
+                color: isSelected ? Colors.white : AppTheme.textPrimary,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(width: 5),
               Text(
                 title,
                 style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF475569),
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? Colors.white : AppTheme.textPrimary,
                   fontSize: 12,
                 ),
               ),
+              if (badge != null) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.white : AppTheme.secondary,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                      color: isSelected ? AppTheme.primary : Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -651,57 +638,6 @@ class _SearchPortalScreenState extends ConsumerState<SearchPortalScreen> {
     );
   }
 
-  Widget _buildBoxTabWithBadge(
-    String title,
-    IconData icon,
-    String badgeText,
-    bool isSelected, {
-    VoidCallback? onTap,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        _buildBoxTab(title, icon, isSelected, onTap: onTap),
-        Positioned(
-          top: -8,
-          right: -8,
-          child: IgnorePointer(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE11D48),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                badgeText,
-                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: const Color(0xFF475569)),
-          const SizedBox(width: 6),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _MatchedHomeCard extends StatelessWidget {

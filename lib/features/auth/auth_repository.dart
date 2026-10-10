@@ -4,6 +4,7 @@ import '../../core/auth_session.dart';
 import '../../core/auth_session_storage.dart';
 import '../../core/token_storage.dart';
 import '../notifications/device_registration_service.dart';
+import 'account_deletion_models.dart';
 
 class AuthRepository {
   AuthRepository(
@@ -20,15 +21,29 @@ class AuthRepository {
 
   Future<String?> readAccessToken() => _tokens.readAccessToken();
 
-  Future<void> sendOtp(String phone) async {
+  Future<void> sendOtp(String phone, {String? email}) async {
     await _dio.post<Map<String, dynamic>>(
       '/auth/send-otp',
-      data: {'phone': phone},
+      data: {
+        if (phone.isNotEmpty) 'phone': phone,
+        if (email != null && email.isNotEmpty) 'email': email,
+      },
+    );
+  }
+
+  Future<void> sendEmailOtp(String email, {String? phone}) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/auth/send-otp',
+      data: {
+        'email': email,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+      },
     );
   }
 
   Future<AuthSession> verifyOtp({
-    required String phone,
+    String? phone,
+    String? email,
     required String otp,
     required String name,
     required String role,
@@ -36,7 +51,8 @@ class AuthRepository {
     final res = await _dio.post<Map<String, dynamic>>(
       '/auth/verify-otp',
       data: {
-        'phone': phone,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (email != null && email.isNotEmpty) 'email': email,
         'otp': otp,
         'name': name,
         'role': role,
@@ -57,6 +73,29 @@ class AuthRepository {
       },
     );
     return _persistAuthResponse(res);
+  }
+
+  Future<AccountDeletionPolicy> getAccountDeletionPolicy() async {
+    final res = await _dio.get<Map<String, dynamic>>('/legal/account-deletion');
+    final root = res.data ?? {};
+    if (root['data'] is Map<String, dynamic>) {
+      return AccountDeletionPolicy.fromJson(root['data'] as Map<String, dynamic>);
+    }
+    return AccountDeletionPolicy.fromJson(root);
+  }
+
+  Future<AccountDeletionResult> deleteAccount({required String confirmation}) async {
+    final res = await _dio.delete<Map<String, dynamic>>(
+      '/me',
+      data: {'confirmation': confirmation},
+    );
+    final root = res.data ?? {};
+    final data = root['data'] is Map<String, dynamic>
+        ? root['data'] as Map<String, dynamic>
+        : root;
+    final result = AccountDeletionResult.fromJson(data);
+    await signOut();
+    return result;
   }
 
   Future<AuthSession> _persistAuthResponse(Response<Map<String, dynamic>> res) async {

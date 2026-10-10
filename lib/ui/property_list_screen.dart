@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/session_provider.dart';
-import '../../core/providers.dart';
+import '../core/city_resolver.dart';
+import '../core/providers.dart';
+import '../core/session_provider.dart';
+import '../core/theme.dart';
 import '../features/property/property_list_controller.dart';
 import '../features/property/property_models.dart';
+import 'widgets/app_error_state.dart';
+import 'widgets/lead_inquiry_modal.dart';
+import 'widgets/magic_filter_sheet.dart';
+import 'widgets/magic_property_card.dart';
 
 class PropertyListScreen extends ConsumerStatefulWidget {
   const PropertyListScreen({
@@ -43,13 +49,21 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
   String _selectedSort = 'relevance';
   bool _filterBhk = false;
   bool _filterPrice = false;
-  bool _filterReady = false;
+  late MagicFilterState _magicFilters;
 
   final _currencyFormat = NumberFormat.currency(
     locale: 'en_IN',
     symbol: '₹',
     decimalDigits: 0,
   );
+
+  PropertyListController get _controller =>
+      ref.read(_listProvider.notifier);
+
+  PropertyListState get _listState => ref.watch(_listProvider);
+
+  StateNotifierProvider<PropertyListController, PropertyListState> get _listProvider =>
+      widget.embedded ? embeddedPropertyListControllerProvider : propertyListControllerProvider;
 
   @override
   void initState() {
@@ -58,22 +72,45 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
     if (seed != null && seed.isNotEmpty) {
       _searchController.text = seed;
     }
+    _magicFilters = MagicFilterState(
+      category: widget.initialType == 'RENT' ? 'rent' : 'buy',
+    );
     Future.microtask(() {
-      final controller = ref.read(propertyListControllerProvider.notifier);
-      controller.applyFilter(
+      final city = ref.read(searchSelectionProvider).city;
+      if (city != null) {
+        _magicFilters.city = city;
+      }
+      _controller.applyFilter(
         query: seed ?? '',
+        city: city != null ? CityResolver.primary(city) : null,
         type: widget.initialType,
         listingType: widget.initialListingType,
         clearType: widget.initialType == null,
         clearListingType: widget.initialListingType == null,
+        clearScope: true,
       );
     });
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >
           _scrollController.position.maxScrollExtent - 200) {
-        ref.read(propertyListControllerProvider.notifier).loadMore();
+        _controller.loadMore();
       }
     });
+  }
+
+  void _applyMagicFilters(MagicFilterState newFilters) {
+    setState(() {
+      _magicFilters = newFilters;
+    });
+    _controller.applyFilter(
+      query: _searchController.text,
+      bhk: newFilters.bedrooms.isNotEmpty ? newFilters.bedrooms.first : null,
+      maxPrice: newFilters.maxPrice.toInt(),
+      city: CityResolver.primary(newFilters.city),
+      type: newFilters.category == 'rent' ? 'RENT' : 'SALE',
+      scope: newFilters.postedBy.contains('Owner') ? 'owner' : null,
+      clearScope: !newFilters.postedBy.contains('Owner'),
+    );
   }
 
   @override
@@ -93,11 +130,15 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
   }
 
   void _applyActiveFilters() {
-    ref.read(propertyListControllerProvider.notifier).applyFilter(
-          query: _searchController.text,
-          bhk: _filterBhk ? 3 : null,
-          maxPrice: _filterPrice ? 15000000 : null,
-        );
+    final city = ref.read(searchSelectionProvider).city;
+    _controller.applyFilter(
+      query: _searchController.text,
+      bhk: _filterBhk ? 3 : null,
+      maxPrice: _filterPrice ? 15000000 : null,
+      city: city != null ? CityResolver.primary(city) : null,
+      scope: _activeCategory == 'Owner' ? 'owner' : null,
+      clearScope: _activeCategory != 'Owner',
+    );
   }
 
   Future<void> _signOut() async {
@@ -112,8 +153,7 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
       return items.where((i) => i.isUnderConstruction).toList();
     }
     if (_activeCategory == 'Owner') {
-      // Return properties not uploaded by agency
-      return items.where((i) => i.ownerName != null && i.ownerName!.isNotEmpty).toList();
+      return items;
     }
     if (_activeCategory == 'Top Picks') {
       return items.where((i) => i.isFeatured || i.isVerified).toList();
@@ -126,10 +166,9 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(propertyListControllerProvider);
+    final state = _listState;
     final sessionAsync = ref.watch(authSessionProvider);
     final favorites = ref.watch(favoritesProvider);
-    final theme = Theme.of(context);
 
     final user = sessionAsync.value?.user;
     final initials = user != null && user.name.isNotEmpty
@@ -154,21 +193,10 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
     if (state.loading) {
       bodyContent = const Center(child: CircularProgressIndicator());
     } else if (state.error != null && displayedItems.isEmpty) {
-      bodyContent = Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(state.error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => ref.read(propertyListControllerProvider.notifier).refresh(),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
+      bodyContent = AppErrorState(
+        error: state.error,
+        title: 'Could Not Load Properties',
+        onRetry: () => _controller.refresh(),
       );
     } else if (displayedItems.isEmpty) {
       bodyContent = Center(
@@ -191,7 +219,7 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
       );
     } else {
       bodyContent = RefreshIndicator(
-        onRefresh: () => ref.read(propertyListControllerProvider.notifier).refresh(),
+        onRefresh: () => _controller.refresh(),
         child: ListView.builder(
           controller: _scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -211,181 +239,29 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
               return _buildHotspotPropertyCard(item, isFav);
             }
 
-            // Standard layout
-            final String tierLabel;
-            final Color badgeBg;
-            final Color badgeText;
-
-            if (item.isFeatured) {
-              tierLabel = 'Platinum';
-              badgeBg = const Color(0xFFFEF3C7);
-              badgeText = const Color(0xFFD97706);
-            } else if (item.isVerified) {
-              tierLabel = 'Gold';
-              badgeBg = const Color(0xFFD1FAE5);
-              badgeText = const Color(0xFF059669);
-            } else {
-              tierLabel = 'Silver';
-              badgeBg = const Color(0xFFF1F5F9);
-              badgeText = const Color(0xFF475569);
-            }
-
-            final sqft = item.builtUpArea ?? (item.bhk * 550);
-            final statusText = item.isUnderConstruction ? 'Under construction' : 'Ready to move';
-
-            return Card(
-              elevation: 0,
-              color: Colors.white,
-              margin: const EdgeInsets.only(bottom: 24),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey.shade200),
+            // Standard Magicbricks Property Card (SCR-13)
+            return MagicPropertyCard(
+              item: item,
+              isFavorite: isFav,
+              onTap: () => Navigator.pushNamed(
+                context,
+                '/property-detail',
+                arguments: item.id,
               ),
-              child: InkWell(
-                onTap: () => Navigator.pushNamed(
+              onFavoriteToggle: () async {
+                await ref.read(favoritesProvider.notifier).toggle(item.id);
+              },
+              onContactAgent: () {
+                LeadInquiryModal.show(
                   context,
-                  '/property-detail',
-                  arguments: item.id,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          child: SizedBox(
-                            height: 180,
-                            width: double.infinity,
-                            child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                                ? Image.network(
-                                    item.imageUrl!,
-                                    fit: BoxFit.cover,
-                                    height: 180,
-                                    width: double.infinity,
-                                    loadingBuilder: (ctx, child, progress) {
-                                      if (progress == null) return child;
-                                      return Container(
-                                        height: 180,
-                                        decoration: const BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [Color(0xFFE2E8F0), Color(0xFFF1F5F9), Color(0xFFE2E8F0)],
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                          ),
-                                        ),
-                                        child: const Center(
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4F46E5)),
-                                        ),
-                                      );
-                                    },
-                                    errorBuilder: (ctx, e, st) => Container(
-                                      height: 180,
-                                      decoration: const BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Color(0xFF818CF8), Color(0xFFC084FC)],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                      ),
-                                      child: const Center(
-                                        child: Icon(Icons.apartment, size: 48, color: Colors.white),
-                                      ),
-                                    ),
-                                  )
-                                : Container(
-                                    height: 180,
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [Color(0xFF818CF8), Color(0xFFC084FC)],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(Icons.apartment, size: 48, color: Colors.white),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 12,
-                          left: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: badgeBg,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              tierLabel,
-                              style: TextStyle(
-                                color: badgeText,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: IconButton(
-                            icon: Icon(
-                              isFav ? Icons.favorite : Icons.favorite_border,
-                              color: isFav ? Colors.red : Colors.white,
-                              size: 26,
-                            ),
-                            onPressed: () {
-                              ref.read(favoritesProvider.notifier).update((set) {
-                                final next = Set<String>.from(set);
-                                if (next.contains(item.id)) {
-                                  next.remove(item.id);
-                                } else {
-                                  next.add(item.id);
-                                }
-                                return next;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.cardHeadline,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B)),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _formatPrice(item.price),
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4F46E5)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$sqft sqft · $statusText${item.isVerified ? ' · RERA verified' : ''}',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                  listingId: item.id,
+                  title: item.title,
+                  price: _formatPrice(item.price),
+                  locality: item.locality,
+                  city: item.city,
+                  imageUrl: item.imageUrl,
+                );
+              },
             );
           },
         ),
@@ -400,9 +276,12 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
           backgroundColor: Colors.white,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Searching in', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-              Text('Delhi NCR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B))),
+            children: [
+              const Text('Searching in', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+              Text(
+                ref.watch(searchSelectionProvider).city ?? 'New Delhi',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF1E293B)),
+              ),
             ],
           ),
           automaticallyImplyLeading: false,
@@ -470,18 +349,50 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-
-            // Horizontal Filter Dropdowns Row (Sort, Budget, BHK, Type)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+            // Result Count Subheader (SCR-13)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
               child: Row(
                 children: [
+                  Text(
+                    _magicFilters.category == 'rent' ? 'Rent' : 'Sale',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${state.total > 0 ? state.total : displayedItems.length} Properties',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Horizontal Filter Dropdowns Row (Filters Modal, Near Me, Sort, Budget, BHK)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 10),
+              child: Row(
+                children: [
+                  _buildFilterLauncherChip(),
+                  const SizedBox(width: 8),
+                  _buildDropdownChip('Near Me', false, () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Locating nearby properties...')),
+                    );
+                  }),
+                  const SizedBox(width: 8),
                   _buildDropdownChip('Sort by', _selectedSort != 'relevance', () {
                     setState(() {
                       _selectedSort = _selectedSort == 'relevance' ? 'price_asc' : 'relevance';
-                      ref.read(propertyListControllerProvider.notifier).refresh();
+                      _controller.refresh();
                     });
                   }),
                   const SizedBox(width: 8),
@@ -495,20 +406,54 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
                     _applyActiveFilters();
                   }),
                   const SizedBox(width: 8),
-                  _buildFilterChip('Ready', _filterReady, (val) {
-                    setState(() => _filterReady = val);
+                  _buildFilterChip('Verified', _magicFilters.verifiedOnly, (val) {
+                    setState(() => _magicFilters.verifiedOnly = val);
+                    _applyActiveFilters();
                   }),
+                ],
+              ),
+            ),
+
+            // Sticky Promotional MB Prime Banner (SCR-13)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundDark,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.workspace_premium_rounded, color: Colors.amber, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'MB Prime is still waiting for you! Continue >',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
 
             // Section Info Header: Hotspots Title
             if (isSearchActive && displayedItems.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Matching properties in these hotspots',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
@@ -539,6 +484,41 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
         ],
       ),
       body: bodyContent,
+    );
+  }
+
+  Widget _buildFilterLauncherChip() {
+    return GestureDetector(
+      onTap: () {
+        MagicFilterSheet.show(
+          context,
+          initialState: _magicFilters,
+          onApply: _applyMagicFilters,
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFEF2F2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.primary, width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.tune_rounded, size: 16, color: AppTheme.primary),
+            const SizedBox(width: 5),
+            Text(
+              'Filters (${_magicFilters.selectedCount})',
+              style: const TextStyle(
+                color: AppTheme.primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -662,7 +642,7 @@ class _PropertyListScreenState extends ConsumerState<PropertyListScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${item.city}',
+                      item.city,
                       style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 6),

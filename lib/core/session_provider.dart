@@ -41,4 +41,10 @@ class AuthSessionNotifier extends StateNotifier<AsyncValue<AuthSession?>> {
     await _storage.clear();
     state = const AsyncValue.data(null);
   }
+
+  Future<void> deleteAccount(String confirmation) async {
+    await _auth.deleteAccount(confirmation: confirmation);
+    await _storage.clear();
+    state = const AsyncValue.data(null);
+  }
 }

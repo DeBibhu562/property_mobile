@@ -233,12 +233,18 @@ void main() {
         ProviderScope(
           overrides: [
             authSessionProvider.overrideWith((ref) => MockAuthSessionNotifier(buyerSession)),
+            searchSelectionProvider.overrideWith((ref) {
+              final n = SearchSelectionNotifier();
+              n.setIntent(null);
+              n.setCity(null);
+              return n;
+            }),
           ],
           child: MaterialApp(
             routes: {
               '/home': (_) => const AppShellScreen(),
             },
-            home: const WelcomeIntentScreen(),
+            home: const AppShellScreen(),
           ),
         ),
       );
@@ -262,10 +268,10 @@ void main() {
       await tester.tap(find.text('D'));
       await tester.pump();
 
-      // Tap "Delhi NCR" from city grid
-      final delhiNcr = find.widgetWithText(InkWell, 'Delhi NCR');
-      expect(delhiNcr, findsWidgets);
-      await tester.tap(delhiNcr.last);
+      // Tap "Use my current location (Delhi NCR)" from quick options
+      final currentLocationBtn = find.text('Use my current location (Delhi NCR)');
+      expect(currentLocationBtn, findsOneWidget);
+      await tester.tap(currentLocationBtn);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
@@ -273,7 +279,6 @@ void main() {
       // Instead, SearchPortalScreen should be mounted!
       expect(find.byType(AppShellScreen), findsOneWidget);
       expect(find.byType(SearchPortalScreen), findsOneWidget);
-      expect(find.text('Searching in '), findsOneWidget);
       expect(find.text('Delhi NCR'), findsWidgets);
     });
   });

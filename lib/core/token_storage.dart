@@ -9,6 +9,11 @@ class TokenStorage {
     return p.getString(_kAccess);
   }
 
+  Future<String?> readRefreshToken() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_kRefresh);
+  }
+
   Future<void> saveTokens({required String accessToken, String? refreshToken}) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kAccess, accessToken);

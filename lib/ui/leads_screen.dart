@@ -1,9 +1,10 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/api_error_formatter.dart';
 import '../core/providers.dart';
 import '../features/lead/lead_models.dart';
+import 'widgets/app_error_state.dart';
 
 class LeadsScreen extends ConsumerStatefulWidget {
   const LeadsScreen({super.key, this.embedded = false});
@@ -38,10 +39,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
         SnackBar(content: Text('Lead marked $status')),
       );
       await _refresh();
-    } on DioException catch (e) {
+    } catch (e) {
       if (!mounted) return;
+      final parsed = ApiErrorFormatter.format(e, defaultMessage: 'Update failed');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Update failed')),
+        SnackBar(content: Text(parsed.message)),
       );
     }
   }
@@ -59,16 +61,10 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  const SizedBox(height: 80),
-                  Text(snapshot.error.toString(), textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
-                  ),
-                ],
+              return AppErrorState(
+                error: snapshot.error,
+                title: 'Could Not Load Leads',
+                onRetry: _refresh,
               );
             }
             final page = snapshot.data;

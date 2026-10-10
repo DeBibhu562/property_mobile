@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth_session.dart';
 import '../../core/providers.dart';
 import '../../features/listing/listing_models.dart';
+import 'widgets/app_error_state.dart';
 
 class OwnerDashboardScreen extends ConsumerStatefulWidget {
   const OwnerDashboardScreen({super.key, required this.session});
@@ -16,7 +17,7 @@ class OwnerDashboardScreen extends ConsumerStatefulWidget {
 
 class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
   bool _loading = true;
-  String? _error;
+  Object? _error;
   MyListing? _listing;
   Map<String, dynamic>? _quality;
   ListingVisibility? _visibility;
@@ -37,16 +38,17 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     try {
       final listings = await ref.read(listingRepositoryProvider).myListings();
       if (listings.isNotEmpty) {
-        final listing = listings.first;
-        final qualityFuture = ref.read(propertyRepositoryProvider).getPropertyQuality(listing.id);
-        final visibilityFuture = ref.read(listingRepositoryProvider).visibility(listing.id);
-        final leadsFuture = ref.read(leadRepositoryProvider).sellerLeads();
+        final first = listings.first;
+        _listing = first;
 
-        final results = await Future.wait([qualityFuture, visibilityFuture, leadsFuture]);
+        final results = await Future.wait<dynamic>([
+          ref.read(propertyRepositoryProvider).getPropertyQuality(first.id),
+          ref.read(listingRepositoryProvider).visibility(first.id),
+          ref.read(leadRepositoryProvider).sellerLeads(limit: 1),
+        ]);
 
         if (mounted) {
           setState(() {
-            _listing = listing;
             _quality = results[0] as Map<String, dynamic>;
             _visibility = results[1] as ListingVisibility;
             _enquiriesCount = (results[2] as dynamic).total;
@@ -64,7 +66,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e;
           _loading = false;
         });
       }
@@ -83,21 +85,11 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> {
 
     if (_error != null) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Error loading dashboard: $_error', textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _loadDashboardData,
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
+        appBar: AppBar(title: const Text('Owner workspace')),
+        body: AppErrorState(
+          error: _error,
+          title: 'Could Not Load Workspace',
+          onRetry: _loadDashboardData,
         ),
       );
     }

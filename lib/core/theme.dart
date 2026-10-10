@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Professional Color Palette
-  static const Color primary = Color(0xFF4F46E5); // Indigo-Violet
-  static const Color secondary = Color(0xFFF59E0B); // Warm Amber
-  static const Color backgroundLight = Color(0xFFF8FAFC); // Clean Slate
-  static const Color backgroundDark = Color(0xFF020617); // Deep Obsidian
-  static const Color border = Color(0xFFE2E8F0); // Sleek Glassmorphic separators
+  // Magicbricks Brand Color Palette
+  static const Color primary = Color(0xFFD8232A); // Magicbricks Crimson Red
+  static const Color primaryDark = Color(0xFFB31317); // Deep Burgundy Red
+  static const Color secondary = Color(0xFFD97706); // Accent Gold
+  static const Color secondaryLight = Color(0xFFFEF3C7); // Light Gold Chip
+  static const Color backgroundLight = Color(0xFFFBF9F8); // Warm Cream Surface
+  static const Color backgroundDark = Color(0xFF1E2229); // Dark Hero Slate
+  static const Color border = Color(0xFFE2E8F0); // Sleek Separators
   
   static const Color textPrimary = Color(0xFF1E293B);
   static const Color textSecondary = Color(0xFF64748B);
+  static const Color textMuted = Color(0xFF94A3B8);
 
   static ThemeData get lightTheme {
     final baseTextTheme = GoogleFonts.interTextTheme();
